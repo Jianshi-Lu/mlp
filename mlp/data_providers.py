@@ -141,10 +141,10 @@ class MNISTDataProvider(DataProvider):
         super(MNISTDataProvider, self).__init__(
             inputs, targets, batch_size, max_num_batches, shuffle_order, rng)
 
-    # def next(self):
-    #    """Returns next data batch or raises `StopIteration` if at end."""
-    #    inputs_batch, targets_batch = super(MNISTDataProvider, self).next()
-    #    return inputs_batch, self.to_one_of_k(targets_batch)
+    def next(self):
+       """Returns next data batch or raises `StopIteration` if at end."""
+       inputs_batch, targets_batch = super(MNISTDataProvider, self).next()
+       return inputs_batch, self.to_one_of_k(targets_batch)
     
     def __next__(self):
         return self.next()
@@ -164,8 +164,12 @@ class MNISTDataProvider(DataProvider):
             to zero except for the column corresponding to the correct class
             which is equal to one.
         """
-        raise NotImplementedError()
-
+        identity_matrix = np.eye(
+            self.num_classes,
+            dtype=np.float32
+        )
+        one_hot_targets = identity_matrix[int_targets]
+        return one_hot_targets
 
 class MetOfficeDataProvider(DataProvider):
     """South Scotland Met Office weather data provider."""
@@ -194,22 +198,28 @@ class MetOfficeDataProvider(DataProvider):
         assert os.path.isfile(data_path), (
             'Data file does not exist at expected path: ' + data_path
         )
-        #TODO: load raw data from text file
+        # 1. 读取天气数据，取出有效的每日降雨量，并过滤掉 -99.99。
+        raw_data = np.loadtxt(data_path, skiprows=3)
+        daily_values = raw_data[:, 2:].reshape(-1)
+        daily_values = daily_values[daily_values != -99.99]
         
-        #TODO: filter out all missing datapoints and flatten to a vector
+        # 2. 用整条序列的均值和标准差，把每一天的值换算成“高于或低于平均值多少个标准差”。
+        daily_values = (daily_values - daily_values.mean()) / daily_values.std()
         
-        #TODO: normalise data to zero mean, unit standard deviation
-
-        #TODO: convert from flat sequence to windowed data
-
-        #TODO: separate into inputs and targets
-        # inputs are the first (window_size - 1) entries in windows
-        # inputs = ...
-        # targets are the last entries in windows
-        # targets = ...
+        # 3. 按 window_size 切出一组相互重叠的小窗口。
+        window_list = []
+        for i in range(len(daily_values) - self.window_size + 1):
+            window_list.append(daily_values[i:i + self.window_size])
+        windows = np.array(window_list)
         
-        # initialise base class with inputs and targets arrays (uncomment below)
-        # super(MetOfficeDataProvider, self).__init__(
-        #     inputs, targets, batch_size, max_num_batches, shuffle_order, rng)
+        # 4. 将窗口数据分离为输入和目标。
+        # 每个窗口中，最后一天之前的降雨量作为输入
+        inputs = windows[:, :-1]
+        # 每个窗口的最后一天降雨量作为预测目标
+        targets = windows[:, -1]
+        
+        super(MetOfficeDataProvider, self).__init__(
+            inputs, targets, batch_size, max_num_batches, shuffle_order, rng
+        )
     def __next__(self):
             return self.next()
