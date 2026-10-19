@@ -53,10 +53,19 @@ class Optimiser(object):
         parameters according to the learning rule.
         """
         for inputs_batch, targets_batch in self.train_dataset:
+            # 前向传播：保存本批次所有样本各层原始输入（和各层输出），一个样本组成一个array。
+            # 从np矩阵来看，行对应样本，列对应上一层的输入/这一层的输出数值。整体是一个二维数组。
             activations = self.model.fprop(inputs_batch)
+            # 根据最终预测（列表最后一项）和对应标签，计算本批平均损失，随后对每个样本的最终输出求偏导。
+            # 返回的梯度矩阵（最终输出求偏导）与最终输出形状相同，各样本的梯度分别保留。
             grads_wrt_outputs = self.error.grad(activations[-1], targets_batch)
+            # 向后传播：将本批次平均损失对最终输出的梯度作为参数，向前计算每一层的权重/偏置的梯度
+            # 计算时将各样本对同一参数的梯度除以总样本数，再相加。得到本批次的平均权重、偏置梯度
+            # 从np矩阵来看，最终返回值的形状与此模型的权重矩阵相同。
             grads_wrt_params = self.model.grads_wrt_params(
                 activations, grads_wrt_outputs)
+            # 对各层的所有权重、偏置：= 旧参数-学习率*对应梯度
+            # 初始化时已经把模型参数交给 learning_rule 保存了，更新时只需要再传梯度
             self.learning_rule.update_params(grads_wrt_params)
 
     def eval_monitors(self, dataset, label):
